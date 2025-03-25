@@ -71,30 +71,30 @@
     });
 
     var route = [
-      {lat: 5.345, lng: -4.008},  
-      {lat: 4.456, lng: -6.380},  
-      {lat: 6.180, lng: -10.480}, 
-      {lat: 8.4844, lng: -13.2344}, 
-      {lat: 14.7167, lng: -17.4677}, 
-      {lat: 28.2916, lng: -16.6291}, 
-      {lat: 38.7223, lng: -9.1393},  
-      {lat: 43.2965, lng: 5.3698},   
-      {lat: 50.8503, lng: 4.3517}    
+      {lat: 5.345, lng: -4.008},  		//1. Abidjan, Côte d'Ivoire
+      {lat: 4.456, lng: -6.380},  		//2. San-Pédro, Côte d'Ivoire
+      {lat: 6.180, lng: -10.480}, 		//3. Monrovia, Guinée
+      {lat: 8.4844, lng: -13.2344}, 	//4. Freetown, Sierra Leone
+      {lat: 14.7167, lng: -17.4677}, 	//5. Dakar, Sénégal
+      {lat: 28.2916, lng: -16.6291}, 	//6. Tenerife, Îles Canaries
+      {lat: 38.7223, lng: -9.1393},  	//7. Lisbonne, Portugal
+      {lat: 43.2965, lng: 5.3698},   	//8. Marseille, France
+      {lat: 50.8503, lng: 4.3517}    	//9. Bruxelles, Belgique
     ];
 
     var waterSegments = [false, true, true, true, true, true, false, false];
 
-    var startDate = new Date('2026-10-14T00:00:00');
-    var endDate = new Date('2026-11-18T00:00:00');
+    // Durée de l'animation, ajustable (en ms)
+    var animationDuration = 7500;  // 10 secondes pour l'animation
 
-    var animationDuration = 10000;
-    var waterSpeedMultiplier = 2; 
+    // Multiplicateur pour la vitesse de déplacement sur l'eau
+    var waterSpeedMultiplier = 2;  // L'animation est deux fois plus rapide sur l'eau
 
-    var polyline = L.polyline(route.map(p => [p.lat, p.lng]), {color: 'blue', weight: 4}).addTo(map);
-    map.fitBounds(polyline.getBounds());
+    var totalDistance = 0;
+    var distances = [];
+    var segmentDurations = [];
 
-    var marker = L.marker(route[0], {icon: cacaoIcon}).addTo(map);
-
+    // Fonction pour calculer la distance entre deux points géographiques (en km)
     function getDistance(lat1, lng1, lat2, lng2) {
       var R = 6371; 
       var dLat = (lat2 - lat1) * Math.PI / 180;
@@ -107,36 +107,38 @@
       return R * c;
     }
 
-    var distances = [];
-    var totalDistance = 0;
-
+    // Calcul de toutes les distances entre chaque paire de points et la durée
     for (let i = 0; i < route.length - 1; i++) {
       let d = getDistance(route[i].lat, route[i].lng, route[i + 1].lat, route[i + 1].lng);
       distances.push(d);
       totalDistance += d;
-    }
 
-    var segmentDurations = [];
-    var totalAdjustedDuration = 0;
-
-    for (let i = 0; i < distances.length; i++) {
-      let duration = distances[i] * (waterSegments[i] ? 1 / waterSpeedMultiplier : 1);
+      let duration = d * (waterSegments[i] ? 1 / waterSpeedMultiplier : 1);
       segmentDurations.push(duration);
-      totalAdjustedDuration += duration;
     }
 
-    var dateDisplay = document.getElementById('dateDisplay');
-    function updateDateDisplay(currentTime) {
-      var totalDuration = endDate - startDate;
-      var currentDate = new Date(startDate.getTime() + (currentTime / totalAdjustedDuration) * totalDuration);
-      dateDisplay.textContent = currentDate.toLocaleString('fr-FR');
-    }
+    // Calcul des durées ajustées pour chaque segment en fonction de l'animationDuration
+    var totalAdjustedDuration = segmentDurations.reduce((a, b) => a + b, 0);
+    var scaleFactor = animationDuration / totalAdjustedDuration;
 
+    // Ajustement des durées de chaque segment en fonction du temps total de l'animation
+    var adjustedSegmentDurations = segmentDurations.map(d => d * scaleFactor);
+
+    var timeSlider = document.getElementById('timeSlider');
+    timeSlider.min = 0;
+    timeSlider.max = animationDuration;
+
+    var marker = L.marker(route[0], {icon: cacaoIcon}).addTo(map);
+
+    // Ajouter la polyline du trajet (la ligne bleue)
+    var polyline = L.polyline(route, {color: 'blue', weight: 4}).addTo(map);
+
+    // Fonction pour mettre à jour la position du marqueur en fonction du temps
     function updateMarker(currentTime) {
       var elapsed = 0;
-      for (let i = 0; i < segmentDurations.length; i++) {
-        if (elapsed + segmentDurations[i] >= currentTime) {
-          let t = (currentTime - elapsed) / segmentDurations[i];
+      for (let i = 0; i < adjustedSegmentDurations.length; i++) {
+        if (elapsed + adjustedSegmentDurations[i] >= currentTime) {
+          let t = (currentTime - elapsed) / adjustedSegmentDurations[i];
           let startPoint = route[i];
           let endPoint = route[i + 1];
           let currentLat = startPoint.lat + (endPoint.lat - startPoint.lat) * t;
@@ -144,30 +146,48 @@
           marker.setLatLng([currentLat, currentLng]);
           return;
         }
-        elapsed += segmentDurations[i];
+        elapsed += adjustedSegmentDurations[i];
       }
       marker.setLatLng([route[route.length - 1].lat, route[route.length - 1].lng]);
     }
 
+    function updateDateDisplay(currentTime) {
+      var totalDuration = new Date('2026-11-18T00:00:00') - new Date('2026-10-14T00:00:00');
+      var currentDate = new Date(new Date('2026-10-14T00:00:00').getTime() + (currentTime / animationDuration) * totalDuration);
+      dateDisplay.textContent = currentDate.toLocaleString('fr-FR');
+    }
+
+    timeSlider.addEventListener('input', function() {
+      updateMarker(this.value);
+      updateDateDisplay(this.value);
+    });
+
     var playButton = document.getElementById('playButton');
+    var isAnimating = false;
     var animationFrameId;
     var startTime;
 
+    // Fonction pour l'animation avec le bouton "Play"
     function animateMarker(timestamp) {
       if (!startTime) startTime = timestamp;
       var elapsed = timestamp - startTime;
-      if (elapsed > totalAdjustedDuration) elapsed = totalAdjustedDuration;
+      if (elapsed > animationDuration) elapsed = animationDuration;
+      timeSlider.value = elapsed;
       updateMarker(elapsed);
       updateDateDisplay(elapsed);
-      if (elapsed < totalAdjustedDuration) {
+      if (elapsed < animationDuration) {
         animationFrameId = requestAnimationFrame(animateMarker);
+      } else {
+        isAnimating = false;
       }
     }
 
     playButton.addEventListener('click', function() {
-      startTime = null;
-      cancelAnimationFrame(animationFrameId);
-      animationFrameId = requestAnimationFrame(animateMarker);
+      if (!isAnimating) {
+        isAnimating = true;
+        startTime = performance.now();
+        animationFrameId = requestAnimationFrame(animateMarker);
+      }
     });
   </script>
 </body>
