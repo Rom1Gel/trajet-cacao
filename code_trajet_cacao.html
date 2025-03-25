@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Trajet Réaliste du Cacao</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+  <style>
+    body { margin: 0; font-family: Arial, sans-serif; }
+    #map { height: 80vh; }
+    #timeline-container {
+      height: 20vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      background: #f0f0f0;
+      padding: 10px;
+    }
+    #timeSlider {
+      width: 80%;
+    }
+    #dateDisplay {
+      margin-bottom: 10px;
+      font-size: 1.2em;
+    }
+    #timeLabels {
+      width: 80%;
+      display: flex;
+      justify-content: space-between;
+      font-size: 0.9em;
+      margin-top: 5px;
+    }
+    #playButton {
+      margin-top: 10px;
+      padding: 8px 16px;
+      font-size: 1em;
+      background: #007bff;
+      color: white;
+      border: none;
+      cursor: pointer;
+      border-radius: 5px;
+    }
+    #playButton:hover {
+      background: #0056b3;
+    }
+  </style>
+</head>
+<body>
+  <div id="map"></div>
+  <div id="timeline-container">
+    <div id="dateDisplay"></div>
+    <input type="range" id="timeSlider" min="0" value="0">
+    <div id="timeLabels">
+      <span id="startLabel">14/10/2026</span>
+      <span id="endLabel">18/11/2026</span>
+    </div>
+    <button id="playButton">▶ Play</button>
+  </div>
+  <script>
+    var map = L.map('map').setView([15, 0], 3);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '© OpenStreetMap'
+    }).addTo(map);
+
+    var cacaoIcon = L.icon({
+      iconUrl: 'https://media.istockphoto.com/id/1425432280/fr/photo/cabosses-de-cacao-avec-des-feuilles-de-cacao-isol%C3%A9es-sur-fond-blanc.jpg?s=1024x1024&w=is&k=20&c=HigEa6cvUwwDN76R3fbH6PK-YYBQtjXosd2uOUJnQnQ=',
+      iconSize: [48, 48],
+      iconAnchor: [16, 16]
+    });
+
+    var route = [
+      {lat: 5.345, lng: -4.008},  
+      {lat: 4.456, lng: -6.380},  
+      {lat: 6.180, lng: -10.480}, 
+      {lat: 8.4844, lng: -13.2344}, 
+      {lat: 14.7167, lng: -17.4677}, 
+      {lat: 28.2916, lng: -16.6291}, 
+      {lat: 38.7223, lng: -9.1393},  
+      {lat: 43.2965, lng: 5.3698},   
+      {lat: 50.8503, lng: 4.3517}    
+    ];
+
+    var waterSegments = [false, true, true, true, true, true, false, false];
+
+    var startDate = new Date('2026-10-14T00:00:00');
+    var endDate = new Date('2026-11-18T00:00:00');
+
+    var animationDuration = 10000;
+    var waterSpeedMultiplier = 2; 
+
+    var polyline = L.polyline(route.map(p => [p.lat, p.lng]), {color: 'blue', weight: 4}).addTo(map);
+    map.fitBounds(polyline.getBounds());
+
+    var marker = L.marker(route[0], {icon: cacaoIcon}).addTo(map);
+
+    function getDistance(lat1, lng1, lat2, lng2) {
+      var R = 6371; 
+      var dLat = (lat2 - lat1) * Math.PI / 180;
+      var dLng = (lng2 - lng1) * Math.PI / 180;
+      var a = 
+        Math.sin(dLat/2) * Math.sin(dLat/2) +
+        Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * 
+        Math.sin(dLng/2) * Math.sin(dLng/2); 
+      var c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a)); 
+      return R * c;
+    }
+
+    var distances = [];
+    var totalDistance = 0;
+
+    for (let i = 0; i < route.length - 1; i++) {
+      let d = getDistance(route[i].lat, route[i].lng, route[i + 1].lat, route[i + 1].lng);
+      distances.push(d);
+      totalDistance += d;
+    }
+
+    var segmentDurations = [];
+    var totalAdjustedDuration = 0;
+
+    for (let i = 0; i < distances.length; i++) {
+      let duration = distances[i] * (waterSegments[i] ? 1 / waterSpeedMultiplier : 1);
+      segmentDurations.push(duration);
+      totalAdjustedDuration += duration;
+    }
+
+    var dateDisplay = document.getElementById('dateDisplay');
+    function updateDateDisplay(currentTime) {
+      var totalDuration = endDate - startDate;
+      var currentDate = new Date(startDate.getTime() + (currentTime / totalAdjustedDuration) * totalDuration);
+      dateDisplay.textContent = currentDate.toLocaleString('fr-FR');
+    }
+
+    function updateMarker(currentTime) {
+      var elapsed = 0;
+      for (let i = 0; i < segmentDurations.length; i++) {
+        if (elapsed + segmentDurations[i] >= currentTime) {
+          let t = (currentTime - elapsed) / segmentDurations[i];
+          let startPoint = route[i];
+          let endPoint = route[i + 1];
+          let currentLat = startPoint.lat + (endPoint.lat - startPoint.lat) * t;
+          let currentLng = startPoint.lng + (endPoint.lng - startPoint.lng) * t;
+          marker.setLatLng([currentLat, currentLng]);
+          return;
+        }
+        elapsed += segmentDurations[i];
+      }
+      marker.setLatLng([route[route.length - 1].lat, route[route.length - 1].lng]);
+    }
+
+    var playButton = document.getElementById('playButton');
+    var animationFrameId;
+    var startTime;
+
+    function animateMarker(timestamp) {
+      if (!startTime) startTime = timestamp;
+      var elapsed = timestamp - startTime;
+      if (elapsed > totalAdjustedDuration) elapsed = totalAdjustedDuration;
+      updateMarker(elapsed);
+      updateDateDisplay(elapsed);
+      if (elapsed < totalAdjustedDuration) {
+        animationFrameId = requestAnimationFrame(animateMarker);
+      }
+    }
+
+    playButton.addEventListener('click', function() {
+      startTime = null;
+      cancelAnimationFrame(animationFrameId);
+      animationFrameId = requestAnimationFrame(animateMarker);
+    });
+  </script>
+</body>
+</html>
